@@ -201,9 +201,6 @@ func _on_connection_manager_move_received(message: String) -> void:
 		$ConnectionManager.send_message("INVALID:" + uci + ":" + role)
 		return
 
-	# Turn was valid, swap turns
-	current_turn = "black" if current_turn == "white" else"white"
-
 func _ready():
 	board_origin = board_center - Vector2(BOARD_SIZE/2-0.5, BOARD_SIZE/2-0.5) * TILE_SIZE
 	reset_board()
@@ -217,11 +214,9 @@ func _ready():
 		await get_tree().create_timer(2.0).timeout
 		# Play a test game
 		var moves = [
-			'e2e4', 'e7e5', 'f2f4', 'e5f4', 'f1c4', 'd8h4', 'e1f1', 'b7b5', 'c4b5', 'g8f6', 'g1f3', 'h4h6', 'd2d3', 'f6h5', 'f3h4', 'h6g5', 'h4f5', 'c7c6', 'g2g4', 'h5f6', 'h1g1', 'c6b5', 'h2h4', 'g5g6', 'h4h5', 'g6g5', 'd1f3', 'f6g8', 'c1f4', 'g5f6', 'b1c3', 'f8c5', 'c3d5', 'f6b2', 'f4d6', 'c5g1', 'e4e5', 'b2a1', 'f1e2', 'b8a6', 'f5g7', 'e8d8', 'f3f6', 'g8f6', 'd6e7'
-		]
-		
+'d2d4', 'd7d5', 'c2c4', 'c8d7', 'g1f3', 'c7c6', 'e2e3', 'd8c8', 'f1d3', 'd5c4', 'e1e2', 'g7g6', 'd3c4', 'f7f6', 'h1e1', 'f8g7', 'e2f1', 'g8h6', 'f1g1', 'h8g8', 'b1d2', 'g8h8', 'e3e4', 'e8d8', 'd1b3', 'b7b6', 'e4e5', 'd8c7', 'd4d5', 'c7b7', 'd5c6', 'b8c6', 'c4d5', 'f6e5', 'd5c6', 'd7c6', 'd2e4', 'h6f5', 'c1g5', 'f5d4', 'b3c4', 'e7e6', 'c4e6', 'c6e4', 'e6c4', 'c8c4', 'a1c1', 'c4d3', 'e1d1', 'd3a6', 'g5e7', 'h8e8', 'e7d6', 'd4f3', 'g2f3', 'a8c8', 'c1c7', 'c8c7', 'd6c7', 'b7c7', 'f3e4', 'e8d8', 'd1f1', 'd8d2', 'g1g2', 'a6e2', 'g2g3', 'd2d3', 'g3g2', 'e2g4', 'g2h1', 'g4h3', 'h1g1', 'g7h6', 'g1h1', 'h6f4', 'h1g1', 'h3h2'
+]
 		for move in moves:
-			print(move)
 			apply_move(move)
 			await get_tree().create_timer(0.85).timeout
 		print("Done!")
