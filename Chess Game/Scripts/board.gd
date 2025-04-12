@@ -135,11 +135,12 @@ func apply_move(uci: String) -> bool:
 	var to_coords = Vector2i(file_to_col[uci[2]], 8 - int(uci[3]))
 	# Get the moving piece
 	var piece = get_piece_at(from_coords.x, from_coords.y)
+	if piece == null:
+		# Cannot move from location without a piece
+		push_warning("No piece at " + str(from_coords))
+		return false
 	if not piece.is_white and current_turn == "white" or piece.is_white and current_turn == "black":
 		# Cannot move other player's piece
-		return false
-	if piece == null:
-		push_warning("No piece at " + str(from_coords))
 		return false
 	var color = "w" if piece.is_white else "b"
 
@@ -174,30 +175,10 @@ func apply_move(uci: String) -> bool:
 	
 	# Apply the move (with animation)
 	piece.move_piece_to(from_coords, to_coords, true)
+	
+	# Update the current turn
+	current_turn = "black" if current_turn == "white" else "white"
 	return true
-
-func _ready():
-	board_origin = board_center - Vector2(BOARD_SIZE/2-0.5, BOARD_SIZE/2-0.5) * TILE_SIZE
-	reset_board()
-	var bot_game = true
-	
-	if bot_game:
-		# Connect to the bot server
-		$ConnectionManager.connect_to_bot()
-	
-	else:
-		await get_tree().create_timer(2.0).timeout
-		# Play a test game
-		var moves = [
-			'e2e4', 'e7e5', 'f2f4', 'e5f4', 'f1c4', 'd8h4', 'e1f1', 'b7b5', 'c4b5', 'g8f6', 'g1f3', 'h4h6', 'd2d3', 'f6h5', 'f3h4', 'h6g5', 'h4f5', 'c7c6', 'g2g4', 'h5f6', 'h1g1', 'c6b5', 'h2h4', 'g5g6', 'h4h5', 'g6g5', 'd1f3', 'f6g8', 'c1f4', 'g5f6', 'b1c3', 'f8c5', 'c3d5', 'f6b2', 'f4d6', 'c5g1', 'e4e5', 'b2a1', 'f1e2', 'b8a6', 'f5g7', 'e8d8', 'f3f6', 'g8f6', 'd6e7'
-		]
-		
-		for move in moves:
-			apply_move(move)
-			await get_tree().create_timer(0.85).timeout
-		print("Done!")
- 
-
 
 func _on_connection_manager_move_received(message: String) -> void:
 	var parts = message.split(":")
@@ -222,3 +203,25 @@ func _on_connection_manager_move_received(message: String) -> void:
 
 	# Turn was valid, swap turns
 	current_turn = "black" if current_turn == "white" else"white"
+
+func _ready():
+	board_origin = board_center - Vector2(BOARD_SIZE/2-0.5, BOARD_SIZE/2-0.5) * TILE_SIZE
+	reset_board()
+	var bot_game = true
+	
+	if bot_game:
+		# Connect to the bot server
+		$ConnectionManager.connect_to_bot()
+	
+	else:
+		await get_tree().create_timer(2.0).timeout
+		# Play a test game
+		var moves = [
+			'e2e4', 'e7e5', 'f2f4', 'e5f4', 'f1c4', 'd8h4', 'e1f1', 'b7b5', 'c4b5', 'g8f6', 'g1f3', 'h4h6', 'd2d3', 'f6h5', 'f3h4', 'h6g5', 'h4f5', 'c7c6', 'g2g4', 'h5f6', 'h1g1', 'c6b5', 'h2h4', 'g5g6', 'h4h5', 'g6g5', 'd1f3', 'f6g8', 'c1f4', 'g5f6', 'b1c3', 'f8c5', 'c3d5', 'f6b2', 'f4d6', 'c5g1', 'e4e5', 'b2a1', 'f1e2', 'b8a6', 'f5g7', 'e8d8', 'f3f6', 'g8f6', 'd6e7'
+		]
+		
+		for move in moves:
+			print(move)
+			apply_move(move)
+			await get_tree().create_timer(0.85).timeout
+		print("Done!")

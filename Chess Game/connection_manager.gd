@@ -6,7 +6,7 @@ var client := StreamPeerTCP.new()
 var connected := false
 var buffer := PackedByteArray()
 
-func connect_to_bot(ip: String = "127.0.0.1", port: int = 65432, role: String = "viewer"):
+func connect_to_bot(ip: String = "127.0.0.1", port: int = 65432, role: String = "game"):
 	var err = client.connect_to_host(ip, port)
 	if err != OK:
 		print("Failed to connect:", err)
