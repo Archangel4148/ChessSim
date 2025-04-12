@@ -1,9 +1,10 @@
-[gd_scene load_steps=5 format=3 uid="uid://dkmoiyi2pubx3"]
+[gd_scene load_steps=6 format=3 uid="uid://dkmoiyi2pubx3"]
 
 [ext_resource type="Script" uid="uid://3h6cjs078s0h" path="res://Scripts/board.gd" id="1_8l818"]
 [ext_resource type="Texture2D" uid="uid://d3k80uppfpi6" path="res://Assets/Pixel_Art_Chess_DevilsWorkshop_V04/chess/board.png" id="2_psm7c"]
 [ext_resource type="Texture2D" uid="uid://ctqfqu1m400m2" path="res://Assets/Pixel_Art_Chess_DevilsWorkshop_V04/chess/numbers.png" id="3_8l818"]
 [ext_resource type="Texture2D" uid="uid://cm6k5db4rn3i1" path="res://Assets/Pixel_Art_Chess_DevilsWorkshop_V04/chess/text.png" id="4_jqgjh"]
+[ext_resource type="Script" uid="uid://cisgugpvds66o" path="res://connection_manager.gd" id="5_vf5bc"]
 
 [node name="Board" type="Node2D"]
 script = ExtResource("1_8l818")
@@ -25,3 +26,8 @@ texture_filter = 1
 position = Vector2(576, 608)
 scale = Vector2(2.89, 2.89)
 texture = ExtResource("4_jqgjh")
+
+[node name="ConnectionManager" type="Node" parent="."]
+script = ExtResource("5_vf5bc")
+
+[connection signal="move_received" from="ConnectionManager" to="." method="_on_connection_manager_move_received"]
