@@ -13,6 +13,7 @@ const FEN_MAP = {
 }
 
 var pieces = []
+var current_turn = "white"
 
 func _on_piece_moved(from: Vector2i, to: Vector2i, piece: Node2D):
 	clear_piece_at(from.x, from.y)
@@ -123,20 +124,23 @@ func get_fen() -> String:
 
 	return "/".join(rows)
 
-func apply_move(uci: String):
+func apply_move(uci: String) -> bool:
 	# Apply a move from a UCI string like "e4e5"
 	if uci.length() < 4:
 		push_warning("Invalid move: " + uci)
-		return
+		return false
 	# Parse coordinates from the string
 	var file_to_col = {"a": 0, "b": 1, "c": 2, "d": 3, "e": 4, "f": 5, "g": 6, "h": 7}
 	var from_coords = Vector2i(file_to_col[uci[0]], 8 - int(uci[1]))
 	var to_coords = Vector2i(file_to_col[uci[2]], 8 - int(uci[3]))
 	# Get the moving piece
 	var piece = get_piece_at(from_coords.x, from_coords.y)
+	if not piece.is_white and current_turn == "white" or piece.is_white and current_turn == "black":
+		# Cannot move other player's piece
+		return false
 	if piece == null:
 		push_warning("No piece at " + str(from_coords))
-		return
+		return false
 	var color = "w" if piece.is_white else "b"
 
 	# Promotion handling
@@ -170,6 +174,7 @@ func apply_move(uci: String):
 	
 	# Apply the move (with animation)
 	piece.move_piece_to(from_coords, to_coords, true)
+	return true
 
 func _ready():
 	board_origin = board_center - Vector2(BOARD_SIZE/2-0.5, BOARD_SIZE/2-0.5) * TILE_SIZE
@@ -194,5 +199,26 @@ func _ready():
  
 
 
-func _on_connection_manager_move_received(uci_move: String) -> void:
-	print("Received: ", uci_move)
+func _on_connection_manager_move_received(message: String) -> void:
+	var parts = message.split(":")
+	if parts.size() < 2:
+		print("Malformed message:", message)
+		return
+	var role = parts[0]
+	var uci = parts[1]
+	
+	print(role, " sent: ", uci)
+	
+	if role != current_turn:
+		print("Move rejected: not ", role, "'s turn.")
+		$ConnectionManager.send_message("OUTOFTURN:" + role)
+		return
+
+	var success = apply_move(uci)
+	if not success:
+		print("Move rejected: invalid UCI")
+		$ConnectionManager.send_message("INVALID:" + uci + ":" + role)
+		return
+
+	# Turn was valid, swap turns
+	current_turn = "black" if current_turn == "white" else"white"
