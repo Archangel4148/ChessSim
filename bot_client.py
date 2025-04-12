@@ -21,6 +21,10 @@ def listen_to_server(sock):
             break
 
 
+def choose_move() -> str:
+    return input(f"[{ROLE}] Input move: ").strip()
+
+
 def main():
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.connect((HOST, PORT))
@@ -34,7 +38,7 @@ def main():
 
         while True:
             try:
-                move = input(f"[{ROLE}] Your move: ").strip()
+                move = choose_move()
                 if move == "":
                     continue
                 s.sendall((move + "\n").encode())
