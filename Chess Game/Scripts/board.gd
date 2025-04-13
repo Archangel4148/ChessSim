@@ -19,6 +19,20 @@ func _on_piece_moved(from: Vector2i, to: Vector2i, piece: Node2D):
 	clear_piece_at(from.x, from.y)
 	set_piece_at(to.x, to.y, piece)
 
+func _on_piece_dragged(uci: String):
+	print("Drag move received:", uci)
+	_on_connection_manager_move_received(current_turn + ":" + uci + "\n")
+	apply_move(uci, true)  # Apply move forcibly
+
+
+func get_uci_from_coords(from: Vector2i, to: Vector2i) -> String:
+	var col_to_file = ["a", "b", "c", "d", "e", "f", "g", "h"]
+	var from_file = col_to_file[from.x]
+	var from_rank = str(8 - from.y)
+	var to_file = col_to_file[to.x]
+	var to_rank = str(8 - to.y)
+	return from_file + from_rank + to_file + to_rank
+
 func set_board(fen: String):
 	# Remove existing pieces
 	for child in get_children():
@@ -43,6 +57,7 @@ func set_board(fen: String):
 				piece.name = "Piece_%s_%d_%d" % [piece_type, row_idx, col]
 				piece.position = Vector2(col, row_idx) * TILE_SIZE + board_origin
 				piece.piece_moved.connect(_on_piece_moved)
+				piece.piece_dragged.connect(_on_piece_dragged)
 				add_child(piece)
 				set_piece_at(col, row_idx, piece)
 				col += 1
@@ -122,12 +137,41 @@ func get_fen() -> String:
 
 		rows.append(row_fen)
 
-	return "/".join(rows)
+	var piece_placement = "/".join(rows)
+	var active_color = "w" if current_turn == "white" else "b"
+	var castling_rights = get_castling_rights()
+	var en_passant = "-"  # You can implement this later
+	var halfmove_clock = "0"  # Placeholder
+	var fullmove_number = "1"  # Placeholder
 
-func apply_move(uci: String) -> bool:
+	return "%s %s %s %s %s %s" % [
+		piece_placement, active_color, castling_rights, en_passant, halfmove_clock, fullmove_number
+]
+
+func get_castling_rights() -> String:
+	var rights = ""
+	var wr_king = get_piece_at(4, 7)
+	if wr_king != null and wr_king.piece_type == "wk":
+		if get_piece_at(7, 7) != null and get_piece_at(7, 7).piece_type == "wr":
+			rights += "K"
+		if get_piece_at(0, 7) != null and get_piece_at(0, 7).piece_type == "wr":
+			rights += "Q"
+
+	var br_king = get_piece_at(4, 0)
+	if br_king != null and br_king.piece_type == "bk":
+		if get_piece_at(7, 0) != null and get_piece_at(7, 0).piece_type == "br":
+			rights += "k"
+		if get_piece_at(0, 0) != null and get_piece_at(0, 0).piece_type == "br":
+			rights += "q"
+
+	if rights == "":
+		rights = "-"
+	return rights
+
+func apply_move(uci: String, force_move: bool = false) -> bool:
 	# Apply a move from a UCI string like "e4e5"
 	if uci.length() < 4:
-		push_warning("Invalid move: " + uci)
+		push_warning("Invalid UCI Length: " + uci)
 		return false
 	# Parse coordinates from the string
 	var file_to_col = {"a": 0, "b": 1, "c": 2, "d": 3, "e": 4, "f": 5, "g": 6, "h": 7}
@@ -139,7 +183,7 @@ func apply_move(uci: String) -> bool:
 		# Cannot move from location without a piece
 		push_warning("No piece at " + str(from_coords))
 		return false
-	if not piece.is_white and current_turn == "white" or piece.is_white and current_turn == "black":
+	if not force_move and not piece.is_white and current_turn == "white" or piece.is_white and current_turn == "black":
 		# Cannot move other player's piece
 		return false
 	var color = "w" if piece.is_white else "b"
@@ -180,26 +224,30 @@ func apply_move(uci: String) -> bool:
 	current_turn = "black" if current_turn == "white" else "white"
 	return true
 
-func _on_connection_manager_move_received(message: String) -> void:
+func _on_connection_manager_move_received(message: String, force: bool=false) -> void:
 	var parts = message.split(":")
 	if parts.size() < 2:
-		print("Malformed message:", message)
+		print("Malformed message: ", message)
 		return
 	var role = parts[0]
 	var uci = parts[1]
 	
 	print(role, " sent: ", uci)
-	
-	if role != current_turn:
+
+	if not force and role != current_turn:
 		print("Move rejected: not ", role, "'s turn.")
 		$ConnectionManager.send_message("OUTOFTURN:" + role)
 		return
-
+	print("Pre FEN: ", get_fen())
 	var success = apply_move(uci)
 	if not success:
 		print("Move rejected: invalid UCI")
 		$ConnectionManager.send_message("INVALID:" + uci + ":" + role)
 		return
+	print("Updated FEN: ", get_fen())
+	print("Next turn: ", current_turn)
+	$ConnectionManager.send_message("FEN:" + get_fen())
+	$ConnectionManager.send_message("TURN:" + self.current_turn)
 
 func _ready():
 	board_origin = board_center - Vector2(BOARD_SIZE/2-0.5, BOARD_SIZE/2-0.5) * TILE_SIZE
@@ -209,6 +257,10 @@ func _ready():
 	if bot_game:
 		# Connect to the bot server
 		$ConnectionManager.connect_to_bot()
+		await get_tree().create_timer(3.0).timeout
+		# Start the game
+		$ConnectionManager.send_message("FEN:" + get_fen())
+		$ConnectionManager.send_message("TURN:white")
 	
 	else:
 		await get_tree().create_timer(2.0).timeout

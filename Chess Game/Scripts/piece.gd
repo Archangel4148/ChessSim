@@ -4,6 +4,7 @@ extends Node2D
 @onready var board = get_parent()
 
 signal piece_moved(from: Vector2i, to: Vector2i, piece: Node2D)
+signal piece_dragged(uci: String)
 
 var is_white: bool
 var dragging = false
@@ -45,7 +46,17 @@ func drop_piece(mouse_pos: Vector2):
 	if target_idx == null:
 		global_position = original_pos
 		return
-	move_piece_to(from_idx, target_idx)
+	var uci = get_uci_from_coords(from_idx, target_idx)
+	piece_dragged.emit(uci)  # Signal that a dragging move was made
+
+func get_uci_from_coords(from: Vector2i, to: Vector2i) -> String:
+	var col_to_file = ["a", "b", "c", "d", "e", "f", "g", "h"]
+	var from_file = col_to_file[from.x]
+	var from_rank = str(8 - from.y)
+	var to_file = col_to_file[to.x]
+	var to_rank = str(8 - to.y)
+	return from_file + from_rank + to_file + to_rank
+
 
 func move_piece_to(from_idx: Vector2i, target_idx: Vector2i, animate: bool=false):	
 	# If there is a piece on the space, capture it
@@ -56,6 +67,10 @@ func move_piece_to(from_idx: Vector2i, target_idx: Vector2i, animate: bool=false
 	# Move the piece visually
 	var target_position = board.board_idx_to_pos(target_idx)
 	
+	# Trigger the board state update
+	piece_moved.emit(from_idx, target_idx, self)
+	
+	# Display the visual change
 	if animate:
 		# Smooth movement
 		var tween = create_tween()
@@ -64,9 +79,6 @@ func move_piece_to(from_idx: Vector2i, target_idx: Vector2i, animate: bool=false
 	else:
 		# Instant move
 		global_position = target_position
-		
-	# Trigger the board state update
-	piece_moved.emit(from_idx, target_idx, self)
 
 func change_piece_type(new_type: String):
 	# Update the piece type
