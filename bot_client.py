@@ -1,51 +1,50 @@
 import socket
 import threading
 
-HOST = '127.0.0.1'
-PORT = 65432
-ROLE = 'white'  # or 'black'
 
+class ChessBot:
+    def __init__(self, role, host='127.0.0.1', port=65432):
+        self.role = role
+        self.host = host
+        self.port = port
+        self.sock = None
+        self.current_fen = None
 
-def listen_to_server(sock):
-    while True:
-        try:
-            data = sock.recv(1024)
-            if not data:
-                break
-            msg = data.decode().strip()
-            # Clear current input line, print the message, reprint prompt
-            print(f"\n[{ROLE}] Received from server: {msg}")
-            print(f"[{ROLE}] Input move: ", end='', flush=True)
-        except ConnectionResetError:
-            print(f"\n[{ROLE}] Connection lost.")
-            break
-
-
-def choose_move() -> str:
-    return input(f"[{ROLE}] Input move: ").strip()
-
-
-def main():
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.connect((HOST, PORT))
-        print(f"[{ROLE}] Connected to server.")
-
-        # Send role to the server
-        s.sendall(f"{ROLE}\n".encode())
-
-        # Start listener thread
-        threading.Thread(target=listen_to_server, args=(s,), daemon=True).start()
-
+    def listen_to_server(self):
         while True:
             try:
-                move = choose_move()
-                if move == "":
-                    continue
-                s.sendall((move + "\n").encode())
-            except (EOFError, KeyboardInterrupt):
-                print("\n[!] Exiting.")
+                data = self.sock.recv(1024)
+                if not data:
+                    break
+                msg = data.decode().strip()
+                if msg.startswith("FEN:"):
+                    self.current_fen = msg[4:]
+                print(f"\n[{self.role}] Received from server: {msg}")
+                if msg.startswith("TURN"):
+                    move = ""
+                    while not move:
+                        move = self.choose_move()
+                    self.sock.sendall((move + "\n").encode())
+
+            except ConnectionResetError:
+                print(f"\n[{self.role}] Connection lost.")
                 break
 
+    def choose_move(self) -> str:
+        """Override this in subclasses for bot logic (e.g., Stockfish)"""
+        return input(f"[{self.role}] Input move: ").strip()
 
-if __name__ == "__main__":
-    main()
+    def start(self):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as self.sock:
+            self.sock.connect((self.host, self.port))
+            print(f"[{self.role}] Connected to server.")
+            self.sock.sendall(f"{self.role}\n".encode())
+
+            thread = threading.Thread(target=self.listen_to_server)
+            thread.start()
+            thread.join()  # Block here until listener exits
+
+
+if __name__ == '__main__':
+    bot = ChessBot("black")
+    bot.start()

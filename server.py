@@ -48,10 +48,33 @@ def handle_client(conn, addr):
                         print("[!] Malformed OUTOFTURN message")
                     continue  # Don't broadcast OUTOFTURNs
 
-                # Broadcast the move to all clients
-                for r, c in clients.items():
-                    if c != conn:
-                        c.sendall(f"{role}:{message}\n".encode())
+                elif message.startswith("FEN:"):
+                    # Send the FEN to all players
+                    # Format: FEN:<fen_string>
+                    try:
+                        _, fen = message.split(":")
+                        for c in (clients.get("white"), clients.get("black")):
+                            c.sendall(f"FEN:{fen}\n".encode())
+                    except ValueError:
+                        print("[!] Malformed FEN message")
+                    continue
+                elif message.startswith("TURN:"):
+                    # Tell the next player to move
+                    # Format: TURN:<role>
+                    try:
+                        _, target_role = message.split(":")
+                        target_conn = clients.get(target_role)
+                        if target_conn:
+                            target_conn.sendall(f"TURN\n".encode())
+                            print(f"[!] Sent TURN to {target_role}")
+                    except ValueError:
+                        print("[!] Malformed TURN message")
+                    continue
+
+                # Send the move to the game
+                c = clients["game"]
+                if c != conn:
+                    c.sendall(f"{role}:{message}\n".encode())
     except ConnectionResetError:
         print(f"[!] {role} disconnected")
     finally:
