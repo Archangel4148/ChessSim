@@ -62,20 +62,35 @@ func set_board(fen: String):
 				set_piece_at(col, row_idx, piece)
 				col += 1
 
-func reset_board(fen: String = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR"):
+func reset_board(fen: String = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"):
+	# Ensure FEN is valid
+	if not $ChessRuleManager.is_valid_fen(fen):
+		push_error("FEN validation failed. Board not reset.")
+		return
+	
+	# Split the FEN into sections
+	var parts = fen.strip_edges().split(" ")
+	var board_fen = parts[0]
+	var castling_fen = parts[2] if parts.size() > 2 else "-"
+	
+	# Update castling rights at the start
+	$ChessRuleManager.set_castling_rights_from_fen(castling_fen)
+	
+	# Clear the board
 	for row in pieces:
 		for piece in row:
 			if piece:
 				piece.queue_free()
 				
-	# Create the empty board state
+	# Recreate an empty board
 	pieces = []
 	for _i in range(BOARD_SIZE):
 		pieces.append([])
 		for _j in range(BOARD_SIZE):
 			pieces[_i].append(null)
+	
 	# Populate the pieces
-	set_board(fen)
+	set_board(board_fen)
 
 func snap_to_grid(world_pos: Vector2, origin: Vector2 = board_origin) -> Vector2:
 	# Snap the piece's position to the nearest grid position
@@ -139,7 +154,7 @@ func get_fen() -> String:
 
 	var piece_placement = "/".join(rows)
 	var active_color = "w" if current_turn == "white" else "b"
-	var castling_rights = get_castling_rights()
+	var castling_rights = $ChessRuleManager.get_castling_rights()
 	var en_passant = "-"  # You can implement this later
 	var halfmove_clock = "0"  # Placeholder
 	var fullmove_number = "1"  # Placeholder
@@ -148,44 +163,32 @@ func get_fen() -> String:
 		piece_placement, active_color, castling_rights, en_passant, halfmove_clock, fullmove_number
 ]
 
-func get_castling_rights() -> String:
-	var rights = ""
-	var wr_king = get_piece_at(4, 7)
-	if wr_king != null and wr_king.piece_type == "wk":
-		if get_piece_at(7, 7) != null and get_piece_at(7, 7).piece_type == "wr":
-			rights += "K"
-		if get_piece_at(0, 7) != null and get_piece_at(0, 7).piece_type == "wr":
-			rights += "Q"
-
-	var br_king = get_piece_at(4, 0)
-	if br_king != null and br_king.piece_type == "bk":
-		if get_piece_at(7, 0) != null and get_piece_at(7, 0).piece_type == "br":
-			rights += "k"
-		if get_piece_at(0, 0) != null and get_piece_at(0, 0).piece_type == "br":
-			rights += "q"
-
-	if rights == "":
-		rights = "-"
-	return rights
-
 func apply_move(uci: String, force_move: bool = false) -> bool:
 	# Apply a move from a UCI string like "e4e5"
 	if uci.length() < 4:
 		push_warning("Invalid UCI Length: " + uci)
 		return false
-	# Parse coordinates from the string
+	
+	# Convert UCI to coordinates
 	var file_to_col = {"a": 0, "b": 1, "c": 2, "d": 3, "e": 4, "f": 5, "g": 6, "h": 7}
 	var from_coords = Vector2i(file_to_col[uci[0]], 8 - int(uci[1]))
 	var to_coords = Vector2i(file_to_col[uci[2]], 8 - int(uci[3]))
+	
 	# Get the moving piece
 	var piece = get_piece_at(from_coords.x, from_coords.y)
 	if piece == null:
 		# Cannot move from location without a piece
 		push_warning("No piece at " + str(from_coords))
 		return false
-	if not force_move and not piece.is_white and current_turn == "white" or piece.is_white and current_turn == "black":
-		# Cannot move other player's piece
-		return false
+		
+	if not force_move:
+		if not piece.is_white and current_turn == "white" or piece.is_white and current_turn == "black":
+			# Cannot move opponent's piece
+			return false
+		if not $ChessRuleManager.is_valid_move(uci):
+			# Invalid move
+			return false
+		
 	var color = "w" if piece.is_white else "b"
 
 	# Promotion handling
@@ -217,6 +220,9 @@ func apply_move(uci: String, force_move: bool = false) -> bool:
 			set_piece_at(rook_to.x, rook_to.y, rook)
 			rook.move_piece_to(rook_from, rook_to, true)
 	
+	# Update castling rights
+	$ChessRuleManager.update_castling_rights(uci)
+	
 	# Apply the move (with animation)
 	piece.move_piece_to(from_coords, to_coords, true)
 	
@@ -238,14 +244,14 @@ func _on_connection_manager_move_received(message: String, force: bool=false) ->
 		print("Move rejected: not ", role, "'s turn.")
 		$ConnectionManager.send_message("OUTOFTURN:" + role)
 		return
-	print("Pre FEN: ", get_fen())
 	var success = apply_move(uci)
 	if not success:
-		print("Move rejected: invalid UCI")
+		print("Move rejected: Invalid")
 		$ConnectionManager.send_message("INVALID:" + uci + ":" + role)
+		# Make the bot try again
+		$ConnectionManager.send_message("TURN:" + self.current_turn)
 		return
 	print("Updated FEN: ", get_fen())
-	print("Next turn: ", current_turn)
 	$ConnectionManager.send_message("FEN:" + get_fen())
 	$ConnectionManager.send_message("TURN:" + self.current_turn)
 
@@ -270,5 +276,5 @@ func _ready():
 ]
 		for move in moves:
 			apply_move(move)
-			await get_tree().create_timer(0.85).timeout
+			await get_tree().create_timer(0.3).timeout
 		print("Done!")
