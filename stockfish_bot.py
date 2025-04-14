@@ -2,13 +2,15 @@ import stockfish
 
 from bot_client import ChessBot
 
+PATH_TO_STOCKFISH_EXE = "stockfish-windows-x86-64-avx2/stockfish/stockfish-windows-x86-64-avx2.exe"
+
 
 class StockfishBot(ChessBot):
 
     def __init__(self, role, host='127.0.0.1', port=65432):
         super().__init__(role, host, port)
         self.stockfish = stockfish.Stockfish(
-            path="stockfish-windows-x86-64-avx2/stockfish/stockfish-windows-x86-64-avx2.exe",
+            path=PATH_TO_STOCKFISH_EXE,
             parameters={
                 "Skill Level": 20,
                 "Threads": 3,
