@@ -123,6 +123,7 @@ func is_valid_pawn_move(from: Vector2i, to: Vector2i, uci: String):
 	var valid_promo = promo_piece in ["q", "r", "b", "n"]
 		
 	if dx == 0:
+		print(dy==moving_direction, ", ", has_promo_suffix)
 		if dy == moving_direction and target_piece == null:
 			# A normal move, advancing one square
 			if is_promoting:

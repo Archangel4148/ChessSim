@@ -3,6 +3,8 @@ extends Node2D
 @export var board_center = Vector2(576, 320)
 var board_origin: Vector2
 
+var DRAG_IGNORES_RULES = false
+
 const piece_scene = preload("res://piece.tscn")
 const BOARD_SIZE = 8
 const TILE_SIZE = 64
@@ -21,8 +23,20 @@ func _on_piece_moved(from: Vector2i, to: Vector2i, piece: Node2D):
 
 func _on_piece_dragged(uci: String):
 	print("Drag move received:", uci)
-	_on_connection_manager_move_received(current_turn + ":" + uci + "\n")
-	apply_move(uci, true)  # Apply move forcibly
+	
+	# Extract from square
+	var file_to_col = {"a": 0, "b": 1, "c": 2, "d": 3, "e": 4, "f": 5, "g": 6, "h": 7}
+	var from = Vector2i(file_to_col[uci[0]], 8 - int(uci[1]))
+	
+	# Apply the move as if the current bot sent it, overriding rules if necessary
+	var success = _on_connection_manager_move_received(current_turn + ":" + uci + "\n", DRAG_IGNORES_RULES)
+
+	if not success:
+		var piece = get_piece_at(from.x, from.y)
+		if piece != null:
+			# Reset position
+			var tween = create_tween()
+			tween.tween_property(piece, "global_position", board_idx_to_pos(from), 0.2)
 
 
 func get_uci_from_coords(from: Vector2i, to: Vector2i) -> String:
@@ -164,6 +178,7 @@ func get_fen() -> String:
 ]
 
 func apply_move(uci: String, force_move: bool = false) -> bool:
+	print("FORCE? ", force_move)
 	# Apply a move from a UCI string like "e4e5"
 	if uci.length() < 4:
 		push_warning("Invalid UCI Length: " + uci)
@@ -230,37 +245,40 @@ func apply_move(uci: String, force_move: bool = false) -> bool:
 	current_turn = "black" if current_turn == "white" else "white"
 	return true
 
-func _on_connection_manager_move_received(message: String, force: bool=false) -> void:
+func _on_connection_manager_move_received(message: String, force: bool=false) -> bool:
 	var parts = message.split(":")
 	if parts.size() < 2:
 		print("Malformed message: ", message)
-		return
+		return false
 	var role = parts[0]
-	var uci = parts[1]
+	var uci = parts[1].strip_escapes()
 	
 	print(role, " sent: ", uci)
 
 	if not force and role != current_turn:
 		print("Move rejected: not ", role, "'s turn.")
 		$ConnectionManager.send_message("OUTOFTURN:" + role)
-		return
-	var success = apply_move(uci)
+		return false
+	var success = apply_move(uci, force)
 	if not success:
 		print("Move rejected: Invalid")
 		$ConnectionManager.send_message("INVALID:" + uci + ":" + role)
 		# Make the bot try again
 		$ConnectionManager.send_message("TURN:" + self.current_turn)
-		return
+		return false
 	print("Updated FEN: ", get_fen())
 	$ConnectionManager.send_message("FEN:" + get_fen())
 	$ConnectionManager.send_message("TURN:" + self.current_turn)
-
+	return true
+	
 func _ready():
 	board_origin = board_center - Vector2(BOARD_SIZE/2-0.5, BOARD_SIZE/2-0.5) * TILE_SIZE
 	reset_board()
-	var bot_game = true
 	
-	if bot_game:
+	##################### INITIALIZATION SETTINGS #####################
+	var BOT_GAME = true
+	
+	if BOT_GAME:
 		# Connect to the bot server
 		$ConnectionManager.connect_to_bot()
 		await get_tree().create_timer(3.0).timeout
