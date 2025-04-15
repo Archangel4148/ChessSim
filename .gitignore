@@ -1,2 +1,6 @@
 Pipfile
 Pipfile.lock
+stockfish-windows-x86-64-avx2
+.idea
+__pycache__
+*~
