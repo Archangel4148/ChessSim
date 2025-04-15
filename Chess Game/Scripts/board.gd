@@ -4,6 +4,7 @@ extends Node2D
 var board_origin: Vector2
 
 var DRAG_IGNORES_RULES = false
+var STARTING_FEN = null
 
 const piece_scene = preload("res://piece.tscn")
 const BOARD_SIZE = 8
@@ -14,8 +15,17 @@ const FEN_MAP = {
 	"P": "wp", "N": "wn", "B": "wb", "R": "wr", "Q": "wq", "K": "wk",
 }
 
+# Piece storage
 var pieces = []
+var simulated_piece_stack = []
+
+# Tracking for turns/moves
 var current_turn = "white"
+var halfmove_clock = 0
+var fullmove_number = 1
+
+# Tracks the valid square for en passant (-1, -1 is none)
+var en_passant_target: Vector2i = Vector2i(-1, -1)
 
 func _on_piece_moved(from: Vector2i, to: Vector2i, piece: Node2D):
 	clear_piece_at(from.x, from.y)
@@ -27,25 +37,23 @@ func _on_piece_dragged(uci: String):
 	# Extract from square
 	var file_to_col = {"a": 0, "b": 1, "c": 2, "d": 3, "e": 4, "f": 5, "g": 6, "h": 7}
 	var from = Vector2i(file_to_col[uci[0]], 8 - int(uci[1]))
+	var to = Vector2i(file_to_col[uci[2]], 8 - int(uci[3]))
+	var piece = get_piece_at(from.x, from.y)
+	
+	# If a pawn reaches the back rank, just promote to a queen for now
+	if piece != null and piece.piece_type.ends_with("p"):
+		var promotion_rank = 0 if piece.is_white else 7
+		if to.y == promotion_rank:
+			uci += "q"
 	
 	# Apply the move as if the current bot sent it, overriding rules if necessary
 	var success = _on_connection_manager_move_received(current_turn + ":" + uci + "\n", DRAG_IGNORES_RULES)
 
 	if not success:
-		var piece = get_piece_at(from.x, from.y)
 		if piece != null:
 			# Reset position
 			var tween = create_tween()
 			tween.tween_property(piece, "global_position", board_idx_to_pos(from), 0.2)
-
-
-func get_uci_from_coords(from: Vector2i, to: Vector2i) -> String:
-	var col_to_file = ["a", "b", "c", "d", "e", "f", "g", "h"]
-	var from_file = col_to_file[from.x]
-	var from_rank = str(8 - from.y)
-	var to_file = col_to_file[to.x]
-	var to_rank = str(8 - to.y)
-	return from_file + from_rank + to_file + to_rank
 
 func set_board(fen: String):
 	# Remove existing pieces
@@ -169,16 +177,18 @@ func get_fen() -> String:
 	var piece_placement = "/".join(rows)
 	var active_color = "w" if current_turn == "white" else "b"
 	var castling_rights = $ChessRuleManager.get_castling_rights()
-	var en_passant = "-"  # You can implement this later
-	var halfmove_clock = "0"  # Placeholder
-	var fullmove_number = "1"  # Placeholder
+	var en_passant = "-"
+
+	if en_passant_target != Vector2i(-1, -1):
+		# Update the en passant square
+		var col_to_file = ["a", "b", "c", "d", "e", "f", "g", "h"]
+		en_passant = col_to_file[en_passant_target.x] + str(8 - en_passant_target.y)
 
 	return "%s %s %s %s %s %s" % [
 		piece_placement, active_color, castling_rights, en_passant, halfmove_clock, fullmove_number
 ]
 
 func apply_move(uci: String, force_move: bool = false) -> bool:
-	print("FORCE? ", force_move)
 	# Apply a move from a UCI string like "e4e5"
 	if uci.length() < 4:
 		push_warning("Invalid UCI Length: " + uci)
@@ -218,6 +228,22 @@ func apply_move(uci: String, force_move: bool = false) -> bool:
 		else:
 			push_warning("Promotion not allowed to rank " + str(to_coords.y))
 	
+	# Execute en passant (if applicable)
+	if piece.piece_type.ends_with("p") and to_coords == en_passant_target:
+		# If a pawn moved into the en passant target space, execute the attack!
+		var captured_pawn_pos = Vector2i(to_coords.x, from_coords.y)
+		var captured = get_piece_at(captured_pawn_pos.x, captured_pawn_pos.y)
+		if captured:
+			clear_piece_at(captured_pawn_pos.x, captured_pawn_pos.y)
+			captured.queue_free()
+	
+	# Update the en passant target square
+	if piece.piece_type.ends_with("p") and abs(from_coords.y - to_coords.y) == 2:
+		var dir = -1 if piece.is_white else 1
+		en_passant_target = from_coords + Vector2i(0, dir)
+	else:
+		en_passant_target = Vector2i(-1, -1)
+	
 	# Detect and handle castling
 	if piece.piece_type.ends_with("k") and abs(from_coords.x - to_coords.x) == 2:
 		var rook_from: Vector2i
@@ -241,9 +267,56 @@ func apply_move(uci: String, force_move: bool = false) -> bool:
 	# Apply the move (with animation)
 	piece.move_piece_to(from_coords, to_coords, true)
 	
+	# Update move counts
+	var is_capture = get_piece_at(to_coords.x, to_coords.y) != null
+	if piece.piece_type.ends_with("p") or is_capture:
+		# Reset half move clock on pawn move or capture
+		halfmove_clock = 0
+	else:
+		halfmove_clock += 1
+	# Increase the full move counter after black's turn
+	if current_turn == "black":
+		fullmove_number += 1
+	
 	# Update the current turn
 	current_turn = "black" if current_turn == "white" else "white"
 	return true
+
+func simulate_move(from: Vector2i, to: Vector2i):
+	var moving_piece = get_piece_at(from.x, from.y)
+	var captured_piece = get_piece_at(to.x, to.y)
+
+	# Save state for undo
+	simulated_piece_stack.append({
+		"from": from,
+		"to": to,
+		"moved_piece": moving_piece,
+		"captured_piece": captured_piece
+	})
+	
+	# Perform the move
+	set_piece_at(to.x, to.y, moving_piece)
+	set_piece_at(from.x, from.y, null)
+	
+func undo_simulated_move():
+	if simulated_piece_stack.is_empty():
+		push_error("Tried to undo but stack is empty.")
+		return
+	
+	# Get the most recently simulated move
+	var last_move = simulated_piece_stack.pop_back()
+	# Undo the move
+	set_piece_at(last_move["from"].x, last_move["from"].y, last_move["moved_piece"])
+	set_piece_at(last_move["to"].x, last_move["to"].y, last_move["captured_piece"])
+
+func find_king(is_white: bool) -> Vector2i:
+	var target_type = "wk" if is_white else "bk"
+	for row in range(8):
+		for col in range(8):
+			var piece = get_piece_at(col, row)
+			if piece != null and piece.piece_type == target_type:
+				return Vector2i(col, row)
+	return Vector2i(-1, -1)
 
 func _on_connection_manager_move_received(message: String, force: bool=false) -> bool:
 	var parts = message.split(":")
@@ -273,7 +346,10 @@ func _on_connection_manager_move_received(message: String, force: bool=false) ->
 	
 func _ready():
 	board_origin = board_center - Vector2(BOARD_SIZE/2-0.5, BOARD_SIZE/2-0.5) * TILE_SIZE
-	reset_board()
+	if STARTING_FEN == null:
+		reset_board()
+	else:
+		reset_board(STARTING_FEN)
 	
 	##################### INITIALIZATION SETTINGS #####################
 	var BOT_GAME = true
