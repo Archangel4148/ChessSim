@@ -1,3 +1,5 @@
+import sys
+
 import stockfish
 
 from bot_client import ChessBot
@@ -13,7 +15,7 @@ class StockfishBot(ChessBot):
             path=PATH_TO_STOCKFISH_EXE,
             parameters={
                 "Skill Level": 20,
-                "Threads": 3,
+                "Threads": 2,
                 "Hash": 64,
             }
         )
@@ -27,5 +29,10 @@ class StockfishBot(ChessBot):
 
 
 if __name__ == '__main__':
-    bot = StockfishBot("white")
+
+    role = "white"
+    if len(sys.argv) > 1:
+        role = sys.argv[1]
+
+    bot = StockfishBot(role)
     bot.start()

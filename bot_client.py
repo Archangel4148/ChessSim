@@ -1,4 +1,5 @@
 import socket
+import sys
 import threading
 
 
@@ -46,5 +47,8 @@ class ChessBot:
 
 
 if __name__ == '__main__':
-    bot = ChessBot("black")
+    role = "white"
+    if len(sys.argv) > 1:
+        role = sys.argv[1]
+    bot = ChessBot(role)
     bot.start()
