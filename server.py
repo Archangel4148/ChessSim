@@ -54,7 +54,8 @@ def handle_client(conn, addr):
                     try:
                         _, fen = message.split(":")
                         for c in (clients.get("white"), clients.get("black")):
-                            c.sendall(f"FEN:{fen}\n".encode())
+                            if c is not None:
+                                c.sendall(f"FEN:{fen}\n".encode())
                     except ValueError:
                         print("[!] Malformed FEN message")
                     continue
